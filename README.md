@@ -1,14 +1,15 @@
-# convert_yolov3_weights
-Convert Yolo-V3 .weights model to other models.
+# convert_yolov_weights
+Convert Yolo-v4/v3/v2 .weights model to other models.
 
-## Keras.
+## YOLO-v4:
+- Keras.
+- Mlmodel.
+- Tensorflow.
 
-## Mlmodel.
-
-## Tensorflow.
-
-## Onnx.
-
-## Pytorch.
-
-## Tflite.
+## YOLO-v3 + YOLO-v2
+- Keras.
+- Mlmodel.
+- Tensorflow.
+- Onnx.
+- Pytorch.
+- Tflite.

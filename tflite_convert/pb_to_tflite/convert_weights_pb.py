@@ -11,9 +11,9 @@ from utils import load_weights, load_coco_names, detections_boxes, savepb
 FLAGS = tf.app.flags.FLAGS
 
 tf.app.flags.DEFINE_string(
-    'class_names', 'weights/obj.names', 'File with class names')
+    'class_names', '../../pretrain_models/yolov3/yolov3.names', 'File with class names')
 tf.app.flags.DEFINE_string(
-    'weights_file', '../../pretrain_models/yolov3.weights', 'Binary file with detector weights')
+    'weights_file', '../../pretrain_models/yolov3/yolov3.weights', 'Binary file with detector weights')
 tf.app.flags.DEFINE_string(
     'data_format', 'NHWC', 'Data format: NCHW (gpu only) / NHWC')
 tf.app.flags.DEFINE_string(

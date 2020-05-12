@@ -14,7 +14,7 @@ Convert the weights of YOLO v3 object detector into tensorflow lite format. It c
     - Tiny weights: `wget https://pjreddie.com/media/files/yolov3-tiny.weights` 
     - SPP weights: `wget https://pjreddie.com/media/files/yolov3-spp.weights` 
 3. Convert .weights to .pb saved_model `python ./convert_weights_pb.py` (this can be used for tensorflow serving)      
-4. Convert .pb to .tflite `tflite_convert --saved_model_dir=saved_model/ --output_file yolo_v3.tflite --saved_model_signature_key='predict'`
+4. Convert .pb to .tflite `tflite_convert --saved_model_dir=../../pretrain_models/yolov3/ --output_file ../../pretrain_models/yolov3/yolov3_pb.tflite --saved_model_signature_key='predict'`
 
 
 Optional Flags
@@ -33,5 +33,3 @@ convert_weights_pb.py:
         Use yolov3-spp
     --output_graph
         Location to write the output .pb graph
-        
-Contact me if you have any issues: binhtd.hust@gmail.com / Binh Do

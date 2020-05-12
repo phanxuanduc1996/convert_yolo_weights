@@ -2,8 +2,8 @@ import os
 import coremltools
 import onnxmltools
 
-input_coreml_model = '../webservice/pretrain_models/water_meter_yolov2_tiny/yolo-obj-416-water_yolov2_tiny_15000.mlmodel'
-output_onnx_model = '../webservice/pretrain_models/water_meter_yolov2_tiny/yolo-obj-416-water_yolov2_tiny_15000_onnxmltools.onnx'
+input_coreml_model = '../../pretrain_models/yolov4/yolov4.mlmodel'
+output_onnx_model = '../../pretrain_models/yolov4/yolov4_onnxmltools.onnx'
 
 coreml_model = coremltools.utils.load_spec(input_coreml_model)
 onnx_model = onnxmltools.convert_coreml(coreml_model)

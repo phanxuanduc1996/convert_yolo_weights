@@ -1,7 +1,6 @@
 #! /usr/bin/env python
 """
 Reads Darknet config and weights and creates Keras model with TF backend.
-It use for yolov2 or yolov2-tiny version.
 
 """
 
@@ -11,28 +10,93 @@ import io
 import os
 from collections import defaultdict
 
+from PIL import Image
+
 import numpy as np
+import tensorflow as tf
 from keras import backend as K
-from keras.layers import (Conv2D, Input, ZeroPadding2D, Add,
+from keras.engine.base_layer import Layer
+from keras.layers import (Conv2D, Input, ZeroPadding2D, Add, Lambda,
                           UpSampling2D, MaxPooling2D, Concatenate)
 from keras.layers.advanced_activations import LeakyReLU
 from keras.layers.normalization import BatchNormalization
-from keras.models import Model
+from keras.models import Model, load_model
 from keras.regularizers import l2
 from keras.utils.vis_utils import plot_model as plot
 
+import coremltools
+from coremltools.proto import NeuralNetwork_pb2
 
 parser = argparse.ArgumentParser(description='Darknet To Keras Converter.')
-parser.add_argument('--config_path', help='Path to Darknet cfg file.',
-                    default='../../pretrain_models/yolov2.cfg')
-parser.add_argument('--weights_path', help='Path to Darknet weights file.',
-                    default='../../pretrain_models/yolov2.weights')
-parser.add_argument('--output_path', help='Path to output Keras model file.',
-                    default='../../pretrain_models/yolov2.h5')
-parser.add_argument('-p', '--plot_model',
-                    help='Plot generated Keras model and save as image.', action='store_true')
-parser.add_argument('-w', '--weights_only',
-                    help='Save as Keras weights file instead of model file.', action='store_true')
+parser.add_argument('--img_size', help='Image size for YoloV3 model.', default=608)
+parser.add_argument('--config_path', help='Path to Darknet cfg file.', default='../../pretrain_models/yolov4/yolov4.cfg')
+parser.add_argument('--weights_path', help='Path to Darknet weights file.', default='../../pretrain_models/yolov4/yolov4.weights')
+parser.add_argument('--output_path', help='Path to output ML model file.', default='../../pretrain_models/yolov4/yolov4_weights.mlmodel')
+parser.add_argument('-p', '--plot_model', help='Plot generated Keras model and save as image.', action='store_true')
+parser.add_argument('-w', '--weights_only', help='Save as Keras weights file instead of model file.', action='store_true')
+
+
+
+def convert_to_mlmodel(model, output_path):
+
+    # YOLO-v4
+    coreml_model = coremltools.converters.keras.convert(model,
+        input_names='image', image_input_names='image', output_names=['output3', 'output2', 'output1'], image_scale=1/255.,
+        add_custom_layers=True, custom_conversion_functions={"Mish": convert_mish})
+        
+    # # YOLO-v3
+    # coreml_model = coremltools.converters.keras.convert(model,
+    #     input_names='image', image_input_names='image', output_names=['output3', 'output2', 'output1'], image_scale=1 / 255.,
+    #     add_custom_layers=False)
+
+    # YOLO-v2
+    # coreml_model = coremltools.converters.keras.convert(model,
+    #     input_names='image', image_input_names='image', output_names=['output1'], image_scale=1 / 255.)
+
+    # coreml_model.input_description['image'] = 'Input image'
+    # coreml_model.output_description['output1'] = 'The 19x19 grid (Scale1)'
+    # coreml_model.output_description['output2'] = 'The 38x38 grid (Scale2)'
+    # coreml_model.output_description['output3'] = 'The 76x76 grid (Scale3)'
+    coreml_model.save(output_path)
+
+
+class Mish(Layer):
+    def __init__(self, **kwargs):
+        super(Mish, self).__init__(**kwargs)
+        self.supports_masking = True
+
+    def call(self, inputs):
+        return inputs * K.tanh(K.softplus(inputs))
+
+    def get_config(self):
+        config = super(Mish, self).get_config()
+        return config
+
+    def compute_output_shape(self, input_shape):
+        return input_shape
+
+
+def convert_mish(layer):
+    params = NeuralNetwork_pb2.CustomLayerParams()
+    params.className = "Mish"
+    params.description = "Mish Activation Layer"
+    return params
+
+
+def space_to_depth_x2(x):
+    """Thin wrapper for Tensorflow space_to_depth with block_size=2."""
+    # Import currently required to make Lambda work.
+    # See: https://github.com/fchollet/keras/issues/5088#issuecomment-273851273
+    return tf.space_to_depth(x, block_size=2)
+
+
+def space_to_depth_x2_output_shape(input_shape):
+    """Determine space_to_depth output shape for block_size=2.
+    Note: For Lambda with TensorFlow backend, output shape may not be needed.
+    """
+    return (input_shape[0], input_shape[1] // 2, input_shape[2] // 2, 4 *
+            input_shape[3]) if input_shape[1] else (input_shape[0], None, None,
+                                                    4 * input_shape[3])
 
 
 def unique_config_sections(config_file):
@@ -53,7 +117,7 @@ def unique_config_sections(config_file):
     output_stream.seek(0)
     return output_stream
 
-
+# %%
 def _main(args):
     config_path = os.path.expanduser(args.config_path)
     weights_path = os.path.expanduser(args.weights_path)
@@ -64,7 +128,7 @@ def _main(args):
 
     output_path = os.path.expanduser(args.output_path)
     assert output_path.endswith(
-        '.h5'), 'output path {} is not a .h5 file'.format(output_path)
+        '.mlmodel'), 'output path {} is not a .mlmodel file'.format(output_path)
     output_root = os.path.splitext(output_path)[0]
 
     # Load weights and config.
@@ -72,12 +136,10 @@ def _main(args):
     weights_file = open(weights_path, 'rb')
     major, minor, revision = np.ndarray(
         shape=(3, ), dtype='int32', buffer=weights_file.read(12))
-    if (major*10+minor) >= 2 and major < 1000 and minor < 1000:
-        seen = np.ndarray(shape=(1,), dtype='int64',
-                          buffer=weights_file.read(8))
+    if (major*10+minor)>=2 and major<1000 and minor<1000:
+        seen = np.ndarray(shape=(1,), dtype='int64', buffer=weights_file.read(8))
     else:
-        seen = np.ndarray(shape=(1,), dtype='int32',
-                          buffer=weights_file.read(4))
+        seen = np.ndarray(shape=(1,), dtype='int32', buffer=weights_file.read(4))
     print('Weights Header: ', major, minor, revision, seen)
 
     print('Parsing Darknet config.')
@@ -86,7 +148,7 @@ def _main(args):
     cfg_parser.read_file(unique_config_file)
 
     print('Creating Keras model.')
-    input_layer = Input(shape=(None, None, 3))
+    input_layer = Input(shape=(args.img_size, args.img_size, 3))
     prev_layer = input_layer
     all_layers = []
 
@@ -157,15 +219,17 @@ def _main(args):
             act_fn = None
             if activation == 'leaky':
                 pass  # Add advanced activation later.
+            elif activation == 'mish':
+                pass
             elif activation != 'linear':
                 raise ValueError(
                     'Unknown activation function `{}` in section {}'.format(
                         activation, section))
 
             # Create Conv2D layer
-            if stride > 1:
+            if stride>1:
                 # Darknet uses left and top padding instead of 'same' mode
-                prev_layer = ZeroPadding2D(((1, 0), (1, 0)))(prev_layer)
+                prev_layer = ZeroPadding2D(((1,0),(1,0)))(prev_layer)
             conv_layer = (Conv2D(
                 filters, (size, size),
                 strides=(stride, stride),
@@ -182,6 +246,10 @@ def _main(args):
 
             if activation == 'linear':
                 all_layers.append(prev_layer)
+            elif activation == 'mish':
+                act_layer = Mish()(prev_layer)
+                prev_layer = act_layer
+                all_layers.append(act_layer)
             elif activation == 'leaky':
                 act_layer = LeakyReLU(alpha=0.1)(prev_layer)
                 prev_layer = act_layer
@@ -223,7 +291,22 @@ def _main(args):
             all_layers.append(UpSampling2D(stride)(prev_layer))
             prev_layer = all_layers[-1]
 
+        elif section.startswith('reorg'):
+            block_size = int(cfg_parser[section]['stride'])
+            assert block_size == 2, 'Only reorg with stride 2 supported.'
+            all_layers.append(
+                Lambda(
+                    space_to_depth_x2,
+                    output_shape=space_to_depth_x2_output_shape,
+                    name='space_to_depth_x2')(prev_layer))
+            prev_layer = all_layers[-1]
+        
         elif section.startswith('region'):
+            out_index.append(len(all_layers)-1)
+            all_layers.append(None)
+            prev_layer = all_layers[-1]
+
+        elif section.startswith('yolo'):
             out_index.append(len(all_layers)-1)
             all_layers.append(None)
             prev_layer = all_layers[-1]
@@ -238,15 +321,11 @@ def _main(args):
     # Create and save model.
     if len(out_index) == 0:
         out_index.append(len(all_layers)-1)
-    model = Model(inputs=input_layer, outputs=[
-                  all_layers[i] for i in out_index])
-    print(model.summary())
-    if args.weights_only:
-        model.save_weights('{}'.format(output_path))
-        print('Saved Keras weights to {}'.format(output_path))
-    else:
-        model.save('{}'.format(output_path))
-        print('Saved Keras model to {}'.format(output_path))
+
+    model = Model(inputs=input_layer, outputs=[all_layers[i] for i in out_index])
+    model.summary()
+
+    convert_to_mlmodel(model, output_path)
 
     # Check to see if all weights have been read.
     remaining_weights = len(weights_file.read()) / 4

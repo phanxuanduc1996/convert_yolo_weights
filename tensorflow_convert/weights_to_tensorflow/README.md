@@ -91,5 +91,6 @@ python3 main.py \
 
 ## Launch freeze_graph to have a single bp graph file:
 ```
-freeze_graph --input_graph data/yolo-obj-416-water_tiny.pb --input_checkpoint data/yolo-obj-416-water_tiny.ckpt --input_binary=true --output_graph=data/yolo-obj-416-water_tiny.bp --input_node_names=yolov3-tiny/net1 --output_node_names=yolov3-tiny/convolutional10/BiasAdd,yolov3-tiny/convolutional13/BiasAdd
+freeze_graph --input_graph yolov4/yolov4.pb --input_checkpoint yolov4/yolov4.ckpt --input_binary=true --output_graph=yolov4/yolov4.bp --input_node_names=yolov4/net1 --output_node_names=yolov4/convolutional94/BiasAdd,yolov4/convolutional102/BiasAdd,yolov4/convolutional110/BiasAdd
+
 ```

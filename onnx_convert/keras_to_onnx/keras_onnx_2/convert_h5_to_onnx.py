@@ -1,9 +1,14 @@
-
-from yolo3.utils import letterbox_image
-from yolo3.model import yolo_body, tiny_yolo_body, yolo_boxes_and_scores
-import yolo3
 import os
 import sys
+from os.path import dirname, abspath
+yolo3_dir = os.path.join(os.path.dirname(__file__), './keras_yolo3')
+if os.path.exists(yolo3_dir):
+    sys.path.insert(0, yolo3_dir)
+
+
+import yolo3
+from yolo3.utils import letterbox_image
+from yolo3.model import yolo_body, tiny_yolo_body, yolo_boxes_and_scores
 import inspect
 import colorsys
 import onnx
@@ -18,11 +23,6 @@ from keras2onnx import convert_keras
 from keras2onnx import set_converter
 from keras2onnx.common.onnx_ops import apply_transpose, apply_identity, apply_cast
 from keras2onnx.proto import onnx_proto
-
-from os.path import dirname, abspath
-yolo3_dir = os.path.join(os.path.dirname(__file__), './keras_yolo3')
-if os.path.exists(yolo3_dir):
-    sys.path.insert(0, yolo3_dir)
 
 
 class YOLOEvaluationLayer(keras.layers.Layer):
@@ -380,16 +380,9 @@ if __name__ == '__main__':
 
     target_opset = 10
 
-    model_file_name = '../../pretrain_models/yolov3.onnx'
-    model_path = '../../pretrain_models/yolov3_onnx.h5'
-    anchors_path = 'model_data/yolo_anchors.txt'
-
-    '''
-    # For tiny yolov3 case, use:
-    model_file_name = '../../pretrain_models/yolov3-tiny.onnx'
-    model_path = '../../pretrain_models/yolo-tiny_onnx.h5'
-    anchors_path = 'model_data/tiny_yolo_anchors.txt'
-    '''
+    model_file_name = '../../../pretrain_models/yolov3.onnx'
+    model_path = '../../../pretrain_models/yolov3.h5'
+    anchors_path = '../../../pretrain_models/yolov3_anchors.txt'
 
     if not os.path.exists(model_file_name):
         onnxmodel = convert_model(

@@ -19,7 +19,7 @@ from yolo_layer import YOLOLayer
 # tf.enable_eager_execution()
 
 
-def darknet_base(inputs, YOLO_VERSION='yolov3', data_dir='./weights', include_yolo_head=True):
+def darknet_base(inputs, yolo_version='yolov3', data_dir='./weights', include_yolo_head=True):
     """
     Builds Darknet53 by reading the YOLO configuration file
 
@@ -27,7 +27,7 @@ def darknet_base(inputs, YOLO_VERSION='yolov3', data_dir='./weights', include_yo
     :param include_yolo_head: Includes the YOLO head
     :return: A list of output layers and the network config
     """
-    weights_file = open(os.path.join(data_dir, '{}.weights'.format(YOLO_VERSION)), 'rb')
+    weights_file = open(os.path.join(data_dir, '{}.weights'.format(yolo_version)), 'rb')
     major, minor, revision = np.ndarray(
         shape=(3,), dtype='int32', buffer=weights_file.read(12))
     if (major * 10 + minor) >= 2 and major < 1000 and minor < 1000:
@@ -36,7 +36,7 @@ def darknet_base(inputs, YOLO_VERSION='yolov3', data_dir='./weights', include_yo
         seen = np.ndarray(shape=(1,), dtype='int32', buffer=weights_file.read(4))
     print('Weights Header: ', major, minor, revision, seen)
 
-    path = os.path.join(data_dir, '{}.cfg'.format(YOLO_VERSION))
+    path = os.path.join(data_dir, '{}.cfg'.format(yolo_version))
     blocks = Parser.parse_cfg(path)
     x, layers, yolo_layers = inputs, [], []
     ptr = 0
@@ -46,7 +46,7 @@ def darknet_base(inputs, YOLO_VERSION='yolov3', data_dir='./weights', include_yo
         block_type = block['type']
 
         if block_type == 'net':
-            config = _read_net_config(block, data_dir)
+            config = _read_net_config(block, data_dir, yolo_version)
 
         elif block_type == 'convolutional':
             x, layers, yolo_layers, ptr = _build_conv_layer(x, block, layers, yolo_layers, ptr, config, weights_file)
@@ -82,14 +82,14 @@ def darknet_base(inputs, YOLO_VERSION='yolov3', data_dir='./weights', include_yo
         return output_layers, config
 
 
-def _read_net_config(block, data_dir):
+def _read_net_config(block, data_dir, yolo_version):
     width = int(block['width'])
     height = int(block['height'])
     channels = int(block['channels'])
     decay = float(block['decay'])
 
-    labels = COCOLabels.all(data_dir)
-    colors = COCOLabels.colors(data_dir)
+    labels = COCOLabels.all(data_dir, yolo_version)
+    colors = COCOLabels.colors(data_dir, yolo_version)
 
     return {
         'width': width,
@@ -100,6 +100,8 @@ def _read_net_config(block, data_dir):
         'decay': decay
     }
 
+def Mish(x):
+    return x * K.tanh(K.softplus(x))
 
 def _build_conv_layer(x, block, layers, outputs, ptr, config, weights_file):
     stride = int(block['stride'])
@@ -172,10 +174,13 @@ def _build_conv_layer(x, block, layers, outputs, ptr, config, weights_file):
     if use_batch_normalization:
         x = BatchNormalization(weights=bn_weights_list)(x)
 
-    assert block['activation'] in ['linear', 'leaky'], 'Invalid activation: {}'.format(block['activation'])
+    assert block['activation'] in ['linear', 'leaky', 'mish'], 'Invalid activation: {}'.format(block['activation'])
 
     if block['activation'] == 'leaky':
         x = LeakyReLU(alpha=0.1)(x)
+
+    if block['activation'] == 'mish':
+        x = Mish(x)
 
     layers.append(x)
 
@@ -211,13 +216,21 @@ def _build_route_layer(_x, block, layers, outputs, ptr):
     if len(selected_layers) == 1:
         x = selected_layers[0]
         layers.append(x)
-
         return x, layers, outputs, ptr
 
     elif len(selected_layers) == 2:
         x = Concatenate(axis=3)(selected_layers)
         layers.append(x)
+        return x, layers, outputs, ptr
+    
+    elif len(selected_layers) == 3:
+        x = Concatenate(axis=2)(selected_layers)
+        layers.append(x)
+        return x, layers, outputs, ptr
 
+    elif len(selected_layers) == 4:
+        x = Concatenate(axis=1)(selected_layers)
+        layers.append(x)
         return x, layers, outputs, ptr
 
     else:

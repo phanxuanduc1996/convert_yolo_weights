@@ -13,6 +13,28 @@ from util.cfg_layer import get_cfg_layer
 from util.reader import WeightsReader, CFGReader
 
 
+parser = ArgumentParser()
+parser.add_argument(
+    '--cfg', default='../../pretrain_models/yolov2/yolov2.cfg', help='Darknet .cfg file')
+parser.add_argument(
+    '--weights', default='../../pretrain_models/yolov2/yolov2.weights', help='Darknet .weights file')
+parser.add_argument(
+    '--output', default='../../pretrain_models/yolov2/', help='Output folder')
+parser.add_argument('--prefix', default='yolov2/',
+                    help='Import scope prefix')
+parser.add_argument('--layers', default=0,
+                    help='How many layers, 0 means all')
+parser.add_argument('--gpu', '-g', default='0', help='GPU')
+parser.add_argument('--training', dest='training',
+                    action='store_true', help='Save training mode graph')
+args = parser.parse_args()
+
+# Set GPU to use
+os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(args.gpu)
+# Filter out TensorFlow INFO and WARNING logs
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+
 def parse_net(num_layers, cfg, weights, training=False, const_inits=True, verbose=True):
     net = None
     counters = {}
@@ -103,24 +125,4 @@ def main(args):
 
 
 if __name__ == "__main__":
-    parser = ArgumentParser()
-    parser.add_argument(
-        '--cfg', default='data/yolov3.cfg', help='Darknet .cfg file')
-    parser.add_argument(
-        '--weights', default='data/yolov3.weights', help='Darknet .weights file')
-    parser.add_argument('--output', default='data/', help='Output folder')
-    parser.add_argument('--prefix', default='yolov3-tiny/',
-                        help='Import scope prefix')
-    parser.add_argument('--layers', default=0,
-                        help='How many layers, 0 means all')
-    parser.add_argument('--gpu', '-g', default='0', help='GPU')
-    parser.add_argument('--training', dest='training',
-                        action='store_true', help='Save training mode graph')
-    args = parser.parse_args()
-
-    # Set GPU to use
-    os.environ["CUDA_VISIBLE_DEVICES"] = ",".join(args.gpu)
-    # Filter out TensorFlow INFO and WARNING logs
-    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
     main(args)

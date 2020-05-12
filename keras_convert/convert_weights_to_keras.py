@@ -1,7 +1,7 @@
 #! /usr/bin/env python
 """
 Reads Darknet config and weights and creates Keras model with TF backend.
-It use for yolov3 or yolov3-tiny version.
+It use for yolo4yolo3/yolo2 or yolo4/yolo3/yolo2-tiny version.
 
 """
 
@@ -12,27 +12,35 @@ import os
 from collections import defaultdict
 
 import numpy as np
+import tensorflow as tf
 from keras import backend as K
-from keras.layers import (Conv2D, Input, ZeroPadding2D, Add,
-                          UpSampling2D, MaxPooling2D, Concatenate)
-from keras.layers.advanced_activations import LeakyReLU
-from keras.layers.normalization import BatchNormalization
+from keras.layers import (Conv2D, Input, ZeroPadding2D, Add, Lambda,
+                          UpSampling2D, MaxPooling2D, AveragePooling2D, Concatenate, Activation)
+from keras.layers import LeakyReLU
+from keras.layers import BatchNormalization
 from keras.models import Model
 from keras.regularizers import l2
-from keras.utils.vis_utils import plot_model as plot
+from keras.utils import plot_model as plot
+from coremltools.proto import NeuralNetwork_pb2
 
 
 parser = argparse.ArgumentParser(description='Darknet To Keras Converter.')
 parser.add_argument('--config_path', help='Path to Darknet cfg file.',
-                    default='../../pretrain_models/yolov3.cfg')
+                    default='../pretrain_models/yolov4/yolov4.cfg')
 parser.add_argument('--weights_path', help='Path to Darknet weights file.',
-                    default='../../pretrain_models/yolov3.weights')
+                    default='../pretrain_models/yolov4/yolov4.weights')
 parser.add_argument('--output_path', help='Path to output Keras model file.',
-                    default='../../pretrain_models/yolov3.h5')
+                    default='../pretrain_models/yolov4/yolov4.h5')
 parser.add_argument('-p', '--plot_model',
                     help='Plot generated Keras model and save as image.', action='store_true')
 parser.add_argument('-w', '--weights_only',
                     help='Save as Keras weights file instead of model file.', action='store_true')
+parser.add_argument('-r', '--yolo4_reorder',
+                    help='Reorder output tensors for YOLOv4 cfg and weights file.', action='store_true')
+
+
+def mish(x):
+    return x * K.tanh(K.softplus(x))
 
 
 def unique_config_sections(config_file):
@@ -52,6 +60,8 @@ def unique_config_sections(config_file):
             output_stream.write(line)
     output_stream.seek(0)
     return output_stream
+
+# %%
 
 
 def _main(args):
@@ -86,7 +96,7 @@ def _main(args):
     cfg_parser.read_file(unique_config_file)
 
     print('Creating Keras model.')
-    input_layer = Input(shape=(None, None, 3))
+    input_layer = Input(shape=(None, None, 3), name='image_input')
     prev_layer = input_layer
     all_layers = []
 
@@ -157,6 +167,8 @@ def _main(args):
             act_fn = None
             if activation == 'leaky':
                 pass  # Add advanced activation later.
+            elif activation == 'mish':
+                pass  # Add advanced activation later.
             elif activation != 'linear':
                 raise ValueError(
                     'Unknown activation function `{}` in section {}'.format(
@@ -182,6 +194,10 @@ def _main(args):
 
             if activation == 'linear':
                 all_layers.append(prev_layer)
+            elif activation == 'mish':
+                act_layer = Activation(mish)(prev_layer)
+                prev_layer = act_layer
+                all_layers.append(act_layer)
             elif activation == 'leaky':
                 act_layer = LeakyReLU(alpha=0.1)(prev_layer)
                 prev_layer = act_layer
@@ -210,6 +226,11 @@ def _main(args):
                     padding='same')(prev_layer))
             prev_layer = all_layers[-1]
 
+        elif section.startswith('avgpool'):
+            all_layers.append(
+                AveragePooling2D()(prev_layer))
+            prev_layer = all_layers[-1]
+
         elif section.startswith('shortcut'):
             index = int(cfg_parser[section]['from'])
             activation = cfg_parser[section]['activation']
@@ -223,12 +244,31 @@ def _main(args):
             all_layers.append(UpSampling2D(stride)(prev_layer))
             prev_layer = all_layers[-1]
 
+        elif section.startswith('reorg'):
+            block_size = int(cfg_parser[section]['stride'])
+            assert block_size == 2, 'Only reorg with stride 2 supported.'
+            all_layers.append(
+                Lambda(
+                    lambda x: tf.nn.space_to_depth(x, block_size=2),
+                    name='space_to_depth_x2')(prev_layer))
+            prev_layer = all_layers[-1]
+
+        # elif section.startswith('region'):
+        #     with open('{}_anchors.txt'.format(output_root), 'w') as f:
+        #         print(cfg_parser[section]['anchors'], file=f)
+        
+        elif section.startswith('region'):
+            out_index.append(len(all_layers)-1)
+            all_layers.append(None)
+            prev_layer = all_layers[-1]
+
         elif section.startswith('yolo'):
             out_index.append(len(all_layers)-1)
             all_layers.append(None)
             prev_layer = all_layers[-1]
 
-        elif section.startswith('net'):
+        elif (section.startswith('net') or section.startswith('cost') or
+              section.startswith('softmax')):
             pass
 
         else:
@@ -238,8 +278,12 @@ def _main(args):
     # Create and save model.
     if len(out_index) == 0:
         out_index.append(len(all_layers)-1)
-    model = Model(inputs=input_layer, outputs=[
-                  all_layers[i] for i in out_index])
+
+    if args.yolo4_reorder:
+        # reverse the output tensor index for YOLOv4 cfg & weights, since it use a different yolo outout order
+        out_index.reverse()
+
+    model = Model(inputs=input_layer, outputs=[all_layers[i] for i in out_index])
     print(model.summary())
     if args.weights_only:
         model.save_weights('{}'.format(output_path))

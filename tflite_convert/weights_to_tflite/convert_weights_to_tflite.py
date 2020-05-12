@@ -1,29 +1,23 @@
-# NOTE: Because of a bug in TensorFlow, this should be run in the console
-# NOTE: python tflite.py
+import sys
+import os
+sys.path.append(os.path.abspath('./src'))
 from darknet import darknet_base
 import argparse
 from tensorflow.keras import Input, Model
 import tensorflow as tf
-import sys
-import os
-sys.path.append(os.path.abspath('./src'))
 
 
 parser = argparse.ArgumentParser(description='Keras to TF-Lite converter')
-parser.add_argument('--h5_path', default='../../pretrain_models/yolov3_tflite.h5',
+parser.add_argument('--h5_path', default='../../pretrain_models/yolov3/yolov3.h5',
                     help='Path to Darknet h5 weights file.')
-parser.add_argument('--output_path', default='../../pretrain_models/yolov3.tflite',
+parser.add_argument('--output_path', default='../../pretrain_models/yolov3/yolov3_weights.tflite',
                     help='Path to output Keras model file.')
-
 args = parser.parse_args()
 
 
 inputs = Input(shape=(None, None, 3))
-# NOTE: Here, we do not include the YOLO head because TFLite does not
-# NOTE: support custom layers yet. Therefore, we'll need to implement
-# NOTE: the YOLO head ourselves.
 outputs, config = darknet_base(
-    inputs, YOLO_VERSION='yolov3', data_dir='weights', include_yolo_head=False)
+    inputs, yolo_version='yolov3', data_dir='../../pretrain_models/yolov3', include_yolo_head=False)
 
 model = Model(inputs, outputs)
 model_path = args.h5_path
@@ -38,6 +32,5 @@ model = tf.keras.models.load_model(model_path,
 
 converter = tf.contrib.lite.TFLiteConverter.from_keras_model_file(model_path,
                                                                   input_shapes={'input_1': [1, config['width'], config['height'], 3]})
-#converter.post_training_quantize = True
 tflite_model = converter.convert()
 open(args.output_path, "wb").write(tflite_model)

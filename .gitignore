@@ -1,0 +1,4 @@
+pretrain_models/
+pretrain_models/*
+mlmodel_convert/tf_to_mlmodel/
+mlmodel_convert/tf_to_mlmodel/*
