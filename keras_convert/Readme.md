@@ -1,3 +1,6 @@
+With Yolo-v2.
+Please replace this code by the code below.
+
 [reorg]
 stride=2
 
