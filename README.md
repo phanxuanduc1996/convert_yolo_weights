@@ -1,4 +1,4 @@
-# convert_yolov_weights
+# CONVERT YOLO WEIGHTS
 Convert Yolo-v4/v3/v2 .weights model to other models.
 
 ## YOLO-v4:
