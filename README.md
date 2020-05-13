@@ -5,6 +5,7 @@ Convert Yolo-v4/v3/v2 .weights model to other models.
 - Keras.
 - Mlmodel.
 - Tensorflow.
+- Pytorch.
 
 ## YOLO-v3 + YOLO-v2
 - Keras.
