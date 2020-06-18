@@ -3,6 +3,28 @@ import torch.nn.functional as F
 from utils.utils import *
 
 
+def make_divisible(v, divisor):
+    # Function ensures all layers have a channel number that is divisible by 8
+    # https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet/mobilenet.py
+    return math.ceil(v / divisor) * divisor
+
+
+class Flatten(nn.Module):
+    # Use after nn.AdaptiveAvgPool2d(1) to remove last 2 dimensions
+    def forward(self, x):
+        return x.view(x.size(0), -1)
+
+
+class Concat(nn.Module):
+    # Concatenate a list of tensors along dimension
+    def __init__(self, dimension=1):
+        super(Concat, self).__init__()
+        self.d = dimension
+
+    def forward(self, x):
+        return torch.cat(x, self.d)
+
+
 class FeatureConcat(nn.Module):
     def __init__(self, layers):
         super(FeatureConcat, self).__init__()
@@ -20,7 +42,7 @@ class WeightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
         self.weight = weight  # apply weights boolean
         self.n = len(layers) + 1  # number of layers
         if weight:
-            self.w = torch.nn.Parameter(torch.zeros(self.n), requires_grad=True)  # layer weights
+            self.w = nn.Parameter(torch.zeros(self.n), requires_grad=True)  # layer weights
 
     def forward(self, x, outputs):
         # Weights
@@ -61,13 +83,13 @@ class MixConv2d(nn.Module):  # MixConv: Mixed Depthwise Convolutional Kernels ht
             a[0] = 1
             ch = np.linalg.lstsq(a, b, rcond=None)[0].round().astype(int)  # solve for equal weight indices, ax = b
 
-        self.m = nn.ModuleList([torch.nn.Conv2d(in_channels=in_ch,
-                                                out_channels=ch[g],
-                                                kernel_size=k[g],
-                                                stride=stride,
-                                                padding=(k[g] - 1) // 2,  # 'same' pad
-                                                dilation=dilation,
-                                                bias=bias) for g in range(groups)])
+        self.m = nn.ModuleList([nn.Conv2d(in_channels=in_ch,
+                                          out_channels=ch[g],
+                                          kernel_size=k[g],
+                                          stride=stride,
+                                          padding=k[g] // 2,  # 'same' pad
+                                          dilation=dilation,
+                                          bias=bias) for g in range(groups)])
 
     def forward(self, x):
         return torch.cat([m(x) for m in self.m], 1)
@@ -76,14 +98,29 @@ class MixConv2d(nn.Module):  # MixConv: Mixed Depthwise Convolutional Kernels ht
 # Activation functions below -------------------------------------------------------------------------------------------
 class SwishImplementation(torch.autograd.Function):
     @staticmethod
-    def forward(ctx, i):
-        ctx.save_for_backward(i)
-        return i * torch.sigmoid(i)
+    def forward(ctx, x):
+        ctx.save_for_backward(x)
+        return x * torch.sigmoid(x)
 
     @staticmethod
     def backward(ctx, grad_output):
-        sigmoid_i = torch.sigmoid(ctx.saved_variables[0])
-        return grad_output * (sigmoid_i * (1 + ctx.saved_variables[0] * (1 - sigmoid_i)))
+        x = ctx.saved_tensors[0]
+        sx = torch.sigmoid(x)  # sigmoid(ctx)
+        return grad_output * (sx * (1 + x * (1 - sx)))
+
+
+class MishImplementation(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, x):
+        ctx.save_for_backward(x)
+        return x.mul(torch.tanh(F.softplus(x)))  # x * tanh(ln(1 + exp(x)))
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        x = ctx.saved_tensors[0]
+        sx = torch.sigmoid(x)
+        fx = F.softplus(x).tanh()
+        return grad_output * (fx + x * sx * (1 - fx * fx))
 
 
 class MemoryEfficientSwish(nn.Module):
@@ -91,11 +128,21 @@ class MemoryEfficientSwish(nn.Module):
         return SwishImplementation.apply(x)
 
 
+class MemoryEfficientMish(nn.Module):
+    def forward(self, x):
+        return MishImplementation.apply(x)
+
+
 class Swish(nn.Module):
     def forward(self, x):
-        return x.mul_(torch.sigmoid(x))
+        return x * torch.sigmoid(x)
+
+
+class HardSwish(nn.Module):  # https://arxiv.org/pdf/1905.02244.pdf
+    def forward(self, x):
+        return x * F.hardtanh(x + 3, 0., 6., True) / 6.
 
 
 class Mish(nn.Module):  # https://github.com/digantamisra98/Mish
     def forward(self, x):
-        return x.mul_(F.softplus(x).tanh())
+        return x * F.softplus(x).tanh()

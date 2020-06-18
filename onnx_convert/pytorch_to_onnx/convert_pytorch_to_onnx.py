@@ -12,8 +12,8 @@ from models import Darknet
 
 device = torch.device('cpu')
 model = torch.load(
-    '../../pretrain_models/yolov3.pt', map_location=device)
+    '../../pretrain_models/yolov4/yolov4.pt', map_location=device)
 
-dummy_input = torch.randn(1, 3, 416, 416)
+dummy_input = torch.randn(1, 3, 608, 608)
 torch.onnx.export(model, dummy_input,
-                  '../../pretrain_models/yolov3_pt.onnx')
+                  '../../pretrain_models/yolov4/yolov4_pt.onnx')

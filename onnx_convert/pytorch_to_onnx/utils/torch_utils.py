@@ -50,6 +50,23 @@ def time_synchronized():
     return time.time()
 
 
+def initialize_weights(model):
+    for m in model.modules():
+        t = type(m)
+        if t is nn.Conv2d:
+            pass  # nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+        elif t is nn.BatchNorm2d:
+            m.eps = 1e-4
+            m.momentum = 0.03
+        elif t in [nn.LeakyReLU, nn.ReLU, nn.ReLU6]:
+            m.inplace = True
+
+
+def find_modules(model, mclass=nn.Conv2d):
+    # finds layer indices matching module class 'mclass'
+    return [i for i, m in enumerate(model.module_list) if isinstance(m, mclass)]
+
+
 def fuse_conv_and_bn(conv, bn):
     # https://tehnokv.com/posts/fusing-batchnorm-and-conv/
     with torch.no_grad():
@@ -90,7 +107,7 @@ def model_info(model, verbose=False):
 
     try:  # FLOPS
         from thop import profile
-        macs, _ = profile(model, inputs=(torch.zeros(1, 3, 640, 640),))
+        macs, _ = profile(model, inputs=(torch.zeros(1, 3, 480, 640),), verbose=False)
         fs = ', %.1f GFLOPS' % (macs / 1E9 * 2)
     except:
         fs = ''

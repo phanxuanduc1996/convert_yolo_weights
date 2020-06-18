@@ -1,5 +1,5 @@
 # Convert .weights to .pt
-	python3  -c "from models import *; convert('cfg/yolov4.cfg', 'weights/yolov4.pt')"
+	python3  -c "from models import *; convert('../pretrain_models/yolov4/yolov4.cfg', '../pretrain_models/yolov4/yolov4.weights')"
 
 # Detect with .pt model.
-	python3 detect.py --cfg cfg/yolov4.cfg --weights yolov4.pt
+	python3 detect.py --cfg ../pretrain_models/yolov4/yolov4.cfg --weights ../pretrain_models/yolov4/yolov4.pt
